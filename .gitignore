@@ -1,0 +1,6 @@
+config.json
+.venv/
+__pycache__/
+*.pyc
+~$*.xlsx
+*_昨日销售_筛选.xlsx

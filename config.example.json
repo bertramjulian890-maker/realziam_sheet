@@ -1,0 +1,7 @@
+{
+  "apiBaseUrl": "http://10.90.10.66:7055/",
+  "spreadsheetToken": "shtk99v6k5T9IvGMQjKnUbxZqub",
+  "sheetId": "",
+  "sourceUrl": "https://mms.crland.com.cn/bmp/saleData?projectName=汕头万象汇&projectCode=20071&projectId=266",
+  "downloadDir": "C:\\Users\\Administrator\\Downloads"
+}
