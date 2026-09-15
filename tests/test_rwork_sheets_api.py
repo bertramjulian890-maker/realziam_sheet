@@ -27,6 +27,9 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(length).decode("utf-8"))
         self.__class__.requests.append({"method": "POST", "path": parsed.path, "query": parse_qs(parsed.query), "body": body})
+        if isinstance(body.get("valueRange"), list):
+            self._send({"code": 500, "message": "写入失败: 'list' object has no attribute 'get'"})
+            return
         self._send({"code": 0, "data": {"updatedCells": 1}})
 
     def _send(self, payload: dict) -> None:
@@ -56,19 +59,38 @@ class RworkSheetsApiTest(unittest.TestCase):
     def setUp(self) -> None:
         Handler.requests = []
 
+    def test_nonadjacent_cells_do_not_overwrite_gap(self) -> None:
+        from rwork_sheets_api import RworkSheetsClient
+
+        RworkSheetsClient(self.base_url).write_values("test", [
+            {"range": "sheet-1!C2:C2", "values": [[0]]},
+            {"range": "sheet-1!C4:C4", "values": [[45]]},
+        ])
+        self.assertEqual(
+            [r["body"]["valueRange"] for r in Handler.requests],
+            [
+                {"range": "sheet-1!C2:C2", "values": [[0]]},
+                {"range": "sheet-1!C4:C4", "values": [[45]]},
+            ],
+        )
+
     def test_uses_documented_query_ranges_and_values_routes(self) -> None:
         from rwork_sheets_api import RworkSheetsClient
 
         client = RworkSheetsClient(self.base_url)
         self.assertEqual(client.sheet_id("shtk-test"), "sheet-1")
         self.assertEqual(client.read_range("shtk-test", "sheet-1!A1:C1"), [["店铺号", "店铺名称", "2026/9/14"]])
-        client.write_values("shtk-test", [{"range": "sheet-1!C2:C2", "values": [[120.5]]}])
+        client.write_values("shtk-test", [
+            {"range": "sheet-1!C2:C2", "values": [[120.5]]},
+            {"range": "sheet-1!C3:C3", "values": [[45]]},
+        ])
         self.assertEqual(Handler.requests[-1], {
             "method": "POST",
             "path": "/api/sheets/values",
             "query": {"spreadsheet_token": ["shtk-test"]},
-            "body": {"valueRange": [{"range": "sheet-1!C2:C2", "values": [[120.5]]}]},
+            "body": {"valueRange": {"range": "sheet-1!C2:C3", "values": [[120.5], [45]]}},
         })
+        self.assertEqual(sum(item["method"] == "POST" for item in Handler.requests), 1)
 
 
 if __name__ == "__main__":

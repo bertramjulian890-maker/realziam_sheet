@@ -6,14 +6,11 @@ import time
 import webbrowser
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
 
 
 REFERENCE_SIZE = (1920, 1080)
 DEFAULT_SOURCE_URL = "https://mms.crland.com.cn/bmp/saleData?projectName=汕头万象汇&projectCode=20071&projectId=266"
 POINTS = {
-    "start_date": (680, 250),
-    "end_date": (870, 250),
     "export_data": (1848, 304),
     "export_history": (1745, 304),
     "download_latest": (1427, 402),
@@ -22,12 +19,6 @@ POINTS = {
 
 def scaled_point(x: int, y: int, screen_width: int, screen_height: int) -> tuple[int, int]:
     return round(x * screen_width / REFERENCE_SIZE[0]), round(y * screen_height / REFERENCE_SIZE[1])
-
-
-def export_date_range(business_date: date, today: date) -> tuple[date, date]:
-    if today < business_date:
-        raise ValueError("当前日期不能早于业务日期")
-    return business_date.replace(day=1), today
 
 
 def download_snapshot(folder: str | Path) -> dict[Path, tuple[int, int]]:
@@ -56,13 +47,6 @@ def find_new_xlsx(folder: str | Path, before: dict[Path, tuple[int, int]], start
     return max(candidates, key=lambda item: item.stat().st_mtime_ns) if candidates else None
 
 
-def _fill_date(pyautogui: Any, point: tuple[int, int], value: date) -> None:
-    pyautogui.click(*point)
-    pyautogui.hotkey("ctrl", "a")
-    pyautogui.write(value.isoformat(), interval=0.04)
-    pyautogui.press("enter")
-
-
 def export_sales(
     *,
     business_date: date,
@@ -89,14 +73,9 @@ def export_sales(
     if os.name == "nt":
         pyautogui.hotkey("win", "up")
         time.sleep(1)
-    if pause_for_login:
-        input("请完成登录并进入“零售额台账”页面，然后按 Enter 继续……")
 
     width, height = pyautogui.size()
     points = {name: scaled_point(x, y, width, height) for name, (x, y) in POINTS.items()}
-    start_date, end_date = export_date_range(business_date, date.today())
-    _fill_date(pyautogui, points["start_date"], start_date)
-    _fill_date(pyautogui, points["end_date"], end_date)
     pyautogui.click(*points["export_data"])
     time.sleep(export_wait_seconds)
     pyautogui.click(*points["export_history"])
@@ -129,7 +108,7 @@ def main() -> int:
     parser.add_argument("--date", default=(date.today() - timedelta(days=1)).isoformat())
     parser.add_argument("--url", default=DEFAULT_SOURCE_URL)
     parser.add_argument("--download-dir", default=str(Path.home() / "Downloads"))
-    parser.add_argument("--pause-for-login", action="store_true")
+    parser.add_argument("--pause-for-login", action="store_true", help="兼容旧命令；现在自动继续")
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
     output = export_sales(

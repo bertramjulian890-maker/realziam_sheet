@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -60,12 +61,27 @@ class RworkSheetsClient:
         raise RworkSheetsApiError(f"读取范围 {cell_range} 时响应中没有 values")
 
     def write_values(self, spreadsheet_token: str, value_ranges: list[dict[str, Any]]) -> dict[str, Any]:
-        return self._request(
-            "POST",
-            "/api/sheets/values",
-            {"spreadsheet_token": spreadsheet_token},
-            {"valueRange": value_ranges},
-        )
+        # The endpoint accepts one valueRange object, not a batch array.
+        # Combine adjacent cells only; never fill gaps with empty values.
+        blocks: list[dict[str, Any]] = []
+        previous = None
+        for item in value_ranges:
+            match = re.fullmatch(r"(.+)!([A-Z]+)(\d+):\2(\d+)", item["range"])
+            if (match and previous and (match[1], match[2]) == (previous[1], previous[2])
+                    and int(match[3]) == int(previous[4]) + 1):
+                blocks[-1]["range"] = blocks[-1]["range"].split(":")[0] + f":{match[2]}{match[4]}"
+                blocks[-1]["values"].extend(item["values"])
+            else:
+                blocks.append({"range": item["range"], "values": list(item["values"])})
+            previous = match
+        result: dict[str, Any] = {}
+        for block in blocks:
+            result = self._request(
+                "POST", "/api/sheets/values",
+                {"spreadsheet_token": spreadsheet_token},
+                {"valueRange": block},
+            )
+        return result
 
     def _request(
         self,

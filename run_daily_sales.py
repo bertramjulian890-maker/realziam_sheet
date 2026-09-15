@@ -21,7 +21,7 @@ def main() -> int:
     parser.add_argument("--config", default="config.json")
     parser.add_argument("--use-file", help="跳过鼠标导出，直接使用已有 XLSX（用于测试或补跑）")
     parser.add_argument("--download-dir")
-    parser.add_argument("--pause-for-login", action="store_true")
+    parser.add_argument("--pause-for-login", action="store_true", help="兼容旧命令；现在自动继续")
     parser.add_argument("--api-base-url")
     parser.add_argument("--spreadsheet-token")
     parser.add_argument("--sheet-id")
