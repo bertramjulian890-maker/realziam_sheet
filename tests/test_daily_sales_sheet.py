@@ -4,11 +4,34 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 from openpyxl import Workbook, load_workbook
 
 
 class DailySalesSheetTest(unittest.TestCase):
+    def test_sync_uses_fixed_rows_and_checks_written_amount(self) -> None:
+        from daily_sales_sheet import sync_file
+        item = {"店铺号": "DL4101", "销售总金额": 45}
+        with tempfile.TemporaryDirectory() as temp, \
+                patch("daily_sales_sheet.filter_export", return_value=[item]), \
+                patch("daily_sales_sheet.save_filtered_workbook", return_value=Path(temp) / "out.xlsx"), \
+                patch("daily_sales_sheet.RworkSheetsClient") as client_type:
+            client = client_type.return_value
+            client.read_range.side_effect = [
+                [["店铺号", "店铺名称"], [None] * 11 + ["9月14日"]],
+                [["DL4101"], ["合计"]],
+                [[45], [45]],
+            ]
+            result = sync_file("input.xlsx", date(2026, 9, 14),
+                               api_base_url="http://test", spreadsheet_token="token", sheet_id="s")
+            self.assertEqual(result["targetColumn"], "L")
+            self.assertTrue(result["verified"])
+            client.write_values.assert_called_once_with("token", [
+                {"range": "s!L3:L3", "values": [[45]]},
+            ])
+            self.assertEqual(client.read_range.call_args_list[1].args[1], "s!A3:A2000")
+
     def test_filters_yesterday_and_writes_only_four_columns(self) -> None:
         from daily_sales_sheet import filter_export, save_filtered_workbook
 
@@ -53,30 +76,35 @@ class DailySalesSheetTest(unittest.TestCase):
     def test_matches_shop_id_and_existing_date_column(self) -> None:
         from daily_sales_sheet import plan_updates
 
-        headers = ["店铺号", "店铺名称"] + [f"2026/9/{day}" for day in range(1, 20)]
+        headers = [["店铺号", "店铺名称"], [None] * 11 + [f"9月{day}日" for day in range(1, 20)]]
         updates = plan_updates(
             "sheet-1",
             headers,
-            ["CA11-005Z001", "DL4101", "EIGB101N01"],
+            ["CA11-005Z001", "DL4101", "EIGB101N01", "合计"],
             [{"店铺号": "EIGB101N01", "店铺名称": "甲", "销售日期": "2026-09-14", "销售总金额": 120.5}],
             date(2026, 9, 14),
         )
-        self.assertEqual(updates, [{"range": "sheet-1!P4:P4", "values": [[120.5]]}])
+        self.assertEqual(updates, [{"range": "sheet-1!Y5:Y5", "values": [[120.5]]}])
 
-    def test_creates_next_date_header_when_missing(self) -> None:
+    def test_missing_date_stops_without_creating_header(self) -> None:
         from daily_sales_sheet import plan_updates
 
-        updates = plan_updates(
+        with self.assertRaisesRegex(ValueError, "固定模板不新增列"):
+            plan_updates(
             "sheet-1",
-            ["店铺号", "店铺名称", "2026/9/14", ""],
+            [["店铺号", "店铺名称"], [None] * 11 + ["9月14日"]],
             ["DL4101"],
             [{"店铺号": "DL4101", "店铺名称": "甲", "销售日期": "2026-09-15", "销售总金额": 45}],
             date(2026, 9, 15),
         )
-        self.assertEqual(updates, [
-            {"range": "sheet-1!D1:D1", "values": [["2026/9/15"]]},
-            {"range": "sheet-1!D2:D2", "values": [[45]]},
-        ])
+
+    def test_cloud_date_serial_and_explicit_year(self) -> None:
+        from daily_sales_sheet import header_date
+        target = date(2026, 9, 14)
+        serial = (target - date(1899, 12, 30)).days
+        for value in (serial, float(serial), "9月14日", "2026/9/14"):
+            self.assertEqual(header_date(value, 2026), target)
+        self.assertNotEqual(header_date("2025/9/14", 2026), target)
 
 
 if __name__ == "__main__":

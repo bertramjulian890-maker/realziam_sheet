@@ -122,33 +122,50 @@ def column_letter(number: int) -> str:
     return result
 
 
+def header_date(value: Any, year: int) -> date | None:
+    """Cloud date cells may be displayed text or spreadsheet serial numbers."""
+    parsed = as_date(value)
+    if parsed:
+        return parsed
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return (datetime(1899, 12, 30) + timedelta(days=value)).date()
+        except (OverflowError, ValueError):
+            return None
+    match = re.fullmatch(r"\s*(\d{1,2})\s*[月/-]\s*(\d{1,2})\s*日?\s*", str(value or ""))
+    if match:
+        try:
+            return date(year, int(match[1]), int(match[2]))
+        except ValueError:
+            return None
+    return None
+
+
 def plan_updates(
     sheet_id: str,
-    headers: list[Any],
+    headers: list[list[Any]],
     cloud_ids: list[Any],
     rows: list[dict[str, Any]],
     business_date: date,
 ) -> list[dict[str, Any]]:
-    clean_headers = [str(value or "").strip() for value in headers]
+    clean_headers = [str(value or "").strip() for value in (headers[0] if headers else [])]
     if clean_headers[:2] != ["店铺号", "店铺名称"]:
         raise ValueError("云表格 A1、B1 必须分别为“店铺号”“店铺名称”")
 
-    date_columns = [index + 1 for index, value in enumerate(headers) if as_date(value) == business_date]
+    dates = headers[1] if len(headers) > 1 else []
+    date_columns = [index + 1 for index, value in enumerate(dates)
+                    if index >= 11 and header_date(value, business_date.year) == business_date]
     if len(date_columns) > 1:
         raise ValueError(f"云表格存在多个 {business_date.isoformat()} 日期列")
     updates: list[dict[str, Any]] = []
-    if date_columns:
-        target_column = date_columns[0]
-    else:
-        occupied = [index + 1 for index, value in enumerate(clean_headers) if value]
-        target_column = max(occupied, default=2) + 1
-        letter = column_letter(target_column)
-        updates.append({"range": f"{sheet_id}!{letter}1:{letter}1", "values": [[f"{business_date.year}/{business_date.month}/{business_date.day}"]]})
+    if not date_columns:
+        raise ValueError(f"第 2 行 L 列起找不到 {business_date.isoformat()} 日期列；固定模板不新增列")
+    target_column = date_columns[0]
 
     id_to_row: dict[str, int] = {}
-    for offset, value in enumerate(cloud_ids, start=2):
+    for offset, value in enumerate(cloud_ids, start=3):
         shop_id = str(value or "").strip()
-        if not shop_id:
+        if not shop_id or shop_id in {"合计", "总计", "小计", "求和"}:
             continue
         if shop_id in id_to_row:
             raise ValueError(f"云表格店铺号重复：{shop_id}")
@@ -182,19 +199,29 @@ def sync_file(
     )
     client = RworkSheetsClient(api_base_url)
     actual_sheet_id = sheet_id or client.sheet_id(spreadsheet_token)
-    header_values = client.read_range(spreadsheet_token, f"{actual_sheet_id}!A1:ZZ1")
-    id_values = client.read_range(spreadsheet_token, f"{actual_sheet_id}!A2:A{max_rows}")
-    headers = header_values[0] if header_values else []
+    header_values = client.read_range(spreadsheet_token, f"{actual_sheet_id}!A1:ZZ2")
+    id_values = client.read_range(spreadsheet_token, f"{actual_sheet_id}!A3:A{max_rows}")
+    headers = header_values
     cloud_ids = [row[0] if row else "" for row in id_values]
     updates = plan_updates(actual_sheet_id, headers, cloud_ids, rows, business_date)
+    target_column = re.search(r"!([A-Z]+)", updates[0]["range"])[1]
     if not dry_run:
         for index in range(0, len(updates), 100):
             client.write_values(spreadsheet_token, updates[index : index + 100])
+        written = client.read_range(spreadsheet_token, f"{actual_sheet_id}!{target_column}3:{target_column}{max_rows}")
+        for update in updates:
+            row_number = int(re.search(r"![A-Z]+(\d+)", update["range"])[1])
+            actual = written[row_number - 3] if row_number - 3 < len(written) else []
+            if not actual or as_amount(actual[0]) != update["values"][0][0]:
+                raise ValueError(f"写入后回读不一致：{update['range']}")
     return {
         "businessDate": business_date.isoformat(),
         "sourceFile": str(Path(source_file).resolve()),
         "filteredFile": str(filtered_path.resolve()),
         "sheetId": actual_sheet_id,
+        "targetColumn": target_column,
+        "dateHeaderCell": f"{target_column}2",
+        "verified": not dry_run,
         "rowCount": len(rows),
         "updateCount": len(updates),
         "dryRun": dry_run,
