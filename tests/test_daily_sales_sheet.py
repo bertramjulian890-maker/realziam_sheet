@@ -106,6 +106,16 @@ class DailySalesSheetTest(unittest.TestCase):
             self.assertEqual(header_date(value, 2026), target)
         self.assertNotEqual(header_date("2025/9/14", 2026), target)
 
+    def test_actual_2025_serial_headers_match_2026_by_month_day(self) -> None:
+        from daily_sales_sheet import plan_updates
+        headers = [["店铺号", "店铺名称"], [None] * 11 + list(range(45901, 45931))]
+        rows = [{"店铺号": "DL4101", "销售总金额": 45}]
+        self.assertEqual(plan_updates("s", headers, ["DL4101", "合计"], rows, date(2026, 9, 15)),
+                         [{"range": "s!Z3:Z3", "values": [[45]]}])
+        headers[1].append("2026/9/15")
+        with self.assertRaisesRegex(ValueError, "多个"):
+            plan_updates("s", headers, ["DL4101"], rows, date(2026, 9, 15))
+
 
 if __name__ == "__main__":
     unittest.main()

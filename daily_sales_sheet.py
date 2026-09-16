@@ -153,8 +153,11 @@ def plan_updates(
         raise ValueError("云表格 A1、B1 必须分别为“店铺号”“店铺名称”")
 
     dates = headers[1] if len(headers) > 1 else []
-    date_columns = [index + 1 for index, value in enumerate(dates)
-                    if index >= 11 and header_date(value, business_date.year) == business_date]
+    date_columns = []
+    for index, value in enumerate(dates):
+        parsed = header_date(value, business_date.year)
+        if index >= 11 and parsed and (parsed.month, parsed.day) == (business_date.month, business_date.day):
+            date_columns.append(index + 1)
     if len(date_columns) > 1:
         raise ValueError(f"云表格存在多个 {business_date.isoformat()} 日期列")
     updates: list[dict[str, Any]] = []
