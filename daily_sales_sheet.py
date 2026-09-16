@@ -184,6 +184,18 @@ def plan_updates(
     return updates
 
 
+def plan_total(sheet_id: str, column: str, cloud_ids: list[Any]) -> dict[str, Any]:
+    shop_rows = [index for index, value in enumerate(cloud_ids, start=3)
+                 if str(value or "").strip()
+                 and str(value).strip() not in {"合计", "总计", "小计", "求和"}]
+    if not shop_rows:
+        raise ValueError("没有可用于汇总的店铺行")
+    last_row = max(shop_rows)
+    total_cell = f"{column}{last_row + 1}"
+    return {"range": f"{sheet_id}!{total_cell}:{total_cell}",
+            "values": [[f"=SUM({column}3:{column}{last_row})"]]}
+
+
 def sync_file(
     source_file: str | Path,
     business_date: date,
@@ -208,6 +220,7 @@ def sync_file(
     cloud_ids = [row[0] if row else "" for row in id_values]
     updates = plan_updates(actual_sheet_id, headers, cloud_ids, rows, business_date)
     target_column = re.search(r"!([A-Z]+)", updates[0]["range"])[1]
+    total_update = plan_total(actual_sheet_id, target_column, cloud_ids)
     if not dry_run:
         for index in range(0, len(updates), 100):
             client.write_values(spreadsheet_token, updates[index : index + 100])
@@ -217,6 +230,14 @@ def sync_file(
             actual = written[row_number - 3] if row_number - 3 < len(written) else []
             if not actual or as_amount(actual[0]) != update["values"][0][0]:
                 raise ValueError(f"写入后回读不一致：{update['range']}")
+        client.write_values(spreadsheet_token, [total_update])
+        total_read = client.read_range(spreadsheet_token, total_update["range"])
+        last_shop_row = int(re.search(r"![A-Z]+(\d+)", total_update["range"])[1]) - 1
+        expected_total = sum((Decimal(str(as_amount(row[0]))) for row in written[:last_shop_row - 2]
+                              if row and row[0] is not None and str(row[0]).strip()), Decimal(0))
+        if (not total_read or not total_read[0]
+                or abs(Decimal(str(as_amount(total_read[0][0]))) - expected_total) > Decimal("0.005")):
+            raise ValueError(f"汇总回读校验失败：{total_update['range']}，预期 {expected_total}")
     return {
         "businessDate": business_date.isoformat(),
         "sourceFile": str(Path(source_file).resolve()),
@@ -226,7 +247,9 @@ def sync_file(
         "dateHeaderCell": f"{target_column}2",
         "verified": not dry_run,
         "rowCount": len(rows),
-        "updateCount": len(updates),
+        "updateCount": len(updates) + 1,
+        "totalCell": total_update["range"].split("!")[1].split(":")[0],
+        "totalFormula": total_update["values"][0][0],
         "dryRun": dry_run,
     }
 

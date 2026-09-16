@@ -22,15 +22,25 @@ class DailySalesSheetTest(unittest.TestCase):
                 [["店铺号", "店铺名称"], [None] * 11 + ["9月14日"]],
                 [["DL4101"], ["合计"]],
                 [[45], [45]],
+                [[45]],
             ]
             result = sync_file("input.xlsx", date(2026, 9, 14),
                                api_base_url="http://test", spreadsheet_token="token", sheet_id="s")
             self.assertEqual(result["targetColumn"], "L")
             self.assertTrue(result["verified"])
-            client.write_values.assert_called_once_with("token", [
+            self.assertEqual(client.write_values.call_args_list[0].args, ("token", [
                 {"range": "s!L3:L3", "values": [[45]]},
+            ]))
+            client.write_values.assert_called_with("token", [
+                {"range": "s!L4:L4", "values": [["=SUM(L3:L3)"]]},
             ])
             self.assertEqual(client.read_range.call_args_list[1].args[1], "s!A3:A2000")
+
+    def test_total_is_below_last_cloud_shop_even_if_not_in_export(self) -> None:
+        from daily_sales_sheet import plan_total
+        ids = [f"shop-{i}" for i in range(99)] + ["合计", None]
+        self.assertEqual(plan_total("s", "Z", ids),
+                         {"range": "s!Z102:Z102", "values": [["=SUM(Z3:Z101)"]]})
 
     def test_filters_yesterday_and_writes_only_four_columns(self) -> None:
         from daily_sales_sheet import filter_export, save_filtered_workbook
