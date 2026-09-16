@@ -221,6 +221,8 @@ def sync_file(
     updates = plan_updates(actual_sheet_id, headers, cloud_ids, rows, business_date)
     target_column = re.search(r"!([A-Z]+)", updates[0]["range"])[1]
     total_update = plan_total(actual_sheet_id, target_column, cloud_ids)
+    total_basis = total_update["values"][0][0]
+    total_amount = None
     if not dry_run:
         for index in range(0, len(updates), 100):
             client.write_values(spreadsheet_token, updates[index : index + 100])
@@ -230,11 +232,13 @@ def sync_file(
             actual = written[row_number - 3] if row_number - 3 < len(written) else []
             if not actual or as_amount(actual[0]) != update["values"][0][0]:
                 raise ValueError(f"写入后回读不一致：{update['range']}")
-        client.write_values(spreadsheet_token, [total_update])
-        total_read = client.read_range(spreadsheet_token, total_update["range"])
         last_shop_row = int(re.search(r"![A-Z]+(\d+)", total_update["range"])[1]) - 1
         expected_total = sum((Decimal(str(as_amount(row[0]))) for row in written[:last_shop_row - 2]
                               if row and row[0] is not None and str(row[0]).strip()), Decimal(0))
+        total_amount = as_amount(expected_total)
+        total_update["values"] = [[total_amount]]
+        client.write_values(spreadsheet_token, [total_update])
+        total_read = client.read_range(spreadsheet_token, total_update["range"])
         if (not total_read or not total_read[0]
                 or abs(Decimal(str(as_amount(total_read[0][0]))) - expected_total) > Decimal("0.005")):
             raise ValueError(f"汇总回读校验失败：{total_update['range']}，预期 {expected_total}")
@@ -249,7 +253,8 @@ def sync_file(
         "rowCount": len(rows),
         "updateCount": len(updates) + 1,
         "totalCell": total_update["range"].split("!")[1].split(":")[0],
-        "totalFormula": total_update["values"][0][0],
+        "totalBasis": total_basis,
+        "totalAmount": total_amount,
         "dryRun": dry_run,
     }
 

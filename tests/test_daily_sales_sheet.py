@@ -20,19 +20,20 @@ class DailySalesSheetTest(unittest.TestCase):
             client = client_type.return_value
             client.read_range.side_effect = [
                 [["店铺号", "店铺名称"], [None] * 11 + ["9月14日"]],
-                [["DL4101"], ["合计"]],
-                [[45], [45]],
-                [[45]],
+                [["DL4101"], ["OTHER"], ["合计"]],
+                [[45], [10.5], ["=SUM(L3:L4)"]],
+                [[55.5]],
             ]
             result = sync_file("input.xlsx", date(2026, 9, 14),
                                api_base_url="http://test", spreadsheet_token="token", sheet_id="s")
             self.assertEqual(result["targetColumn"], "L")
             self.assertTrue(result["verified"])
+            self.assertEqual(result["totalAmount"], 55.5)
             self.assertEqual(client.write_values.call_args_list[0].args, ("token", [
                 {"range": "s!L3:L3", "values": [[45]]},
             ]))
             client.write_values.assert_called_with("token", [
-                {"range": "s!L4:L4", "values": [["=SUM(L3:L3)"]]},
+                {"range": "s!L5:L5", "values": [[55.5]]},
             ])
             self.assertEqual(client.read_range.call_args_list[1].args[1], "s!A3:A2000")
 
