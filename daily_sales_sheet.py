@@ -177,10 +177,13 @@ def plan_updates(
     if missing:
         raise ValueError(f"以下店铺号在云表格中找不到：{', '.join(missing[:20])}")
 
+    amounts = {item["店铺号"]: item["销售总金额"] for item in rows}
     letter = column_letter(target_column)
-    for item in rows:
-        row_number = id_to_row[item["店铺号"]]
-        updates.append({"range": f"{sheet_id}!{letter}{row_number}:{letter}{row_number}", "values": [[item["销售总金额"]]]})
+    for shop_id, row_number in id_to_row.items():
+        updates.append({
+            "range": f"{sheet_id}!{letter}{row_number}:{letter}{row_number}",
+            "values": [[amounts.get(shop_id, "")] ],
+        })
     return updates
 
 
@@ -230,7 +233,11 @@ def sync_file(
         for update in updates:
             row_number = int(re.search(r"![A-Z]+(\d+)", update["range"])[1])
             actual = written[row_number - 3] if row_number - 3 < len(written) else []
-            if not actual or as_amount(actual[0]) != update["values"][0][0]:
+            expected = update["values"][0][0]
+            if expected == "":
+                if actual and actual[0] not in (None, ""):
+                    raise ValueError(f"写入后回读不一致：{update['range']}")
+            elif not actual or as_amount(actual[0]) != expected:
                 raise ValueError(f"写入后回读不一致：{update['range']}")
         last_shop_row = int(re.search(r"![A-Z]+(\d+)", total_update["range"])[1]) - 1
         expected_total = sum((Decimal(str(as_amount(row[0]))) for row in written[:last_shop_row - 2]
@@ -251,6 +258,8 @@ def sync_file(
         "dateHeaderCell": f"{target_column}2",
         "verified": not dry_run,
         "rowCount": len(rows),
+        "overwrittenShopRows": len(updates),
+        "clearedShopRows": sum(1 for update in updates if update["values"][0][0] == ""),
         "updateCount": len(updates) + 1,
         "totalCell": total_update["range"].split("!")[1].split(":")[0],
         "totalBasis": total_basis,

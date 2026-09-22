@@ -21,19 +21,20 @@ class DailySalesSheetTest(unittest.TestCase):
             client.read_range.side_effect = [
                 [["店铺号", "店铺名称"], [None] * 11 + ["9月14日"]],
                 [["DL4101"], ["OTHER"], ["合计"]],
-                [[45], [10.5], ["=SUM(L3:L4)"]],
-                [[55.5]],
+                [[45], [""], ["=SUM(L3:L4)"]],
+                [[45]],
             ]
             result = sync_file("input.xlsx", date(2026, 9, 14),
                                api_base_url="http://test", spreadsheet_token="token", sheet_id="s")
             self.assertEqual(result["targetColumn"], "L")
             self.assertTrue(result["verified"])
-            self.assertEqual(result["totalAmount"], 55.5)
+            self.assertEqual(result["totalAmount"], 45)
             self.assertEqual(client.write_values.call_args_list[0].args, ("token", [
                 {"range": "s!L3:L3", "values": [[45]]},
+                {"range": "s!L4:L4", "values": [[""]]},
             ]))
             client.write_values.assert_called_with("token", [
-                {"range": "s!L5:L5", "values": [[55.5]]},
+                {"range": "s!L5:L5", "values": [[45]]},
             ])
             self.assertEqual(client.read_range.call_args_list[1].args[1], "s!A3:A2000")
 
@@ -95,7 +96,23 @@ class DailySalesSheetTest(unittest.TestCase):
             [{"店铺号": "EIGB101N01", "店铺名称": "甲", "销售日期": "2026-09-14", "销售总金额": 120.5}],
             date(2026, 9, 14),
         )
-        self.assertEqual(updates, [{"range": "sheet-1!Y5:Y5", "values": [[120.5]]}])
+        self.assertEqual(updates, [
+            {"range": "sheet-1!Y3:Y3", "values": [[""]]},
+            {"range": "sheet-1!Y4:Y4", "values": [[""]]},
+            {"range": "sheet-1!Y5:Y5", "values": [[120.5]]},
+        ])
+
+    def test_overwrite_clears_a_shop_absent_from_latest_export(self) -> None:
+        from daily_sales_sheet import plan_updates
+
+        headers = [["店铺号", "店铺名称"], [None] * 11 + ["9月15日"]]
+        updates = plan_updates("s", headers, ["A", "B", "合计"], [
+            {"店铺号": "A", "销售总金额": 80},
+        ], date(2026, 9, 15))
+        self.assertEqual(updates, [
+            {"range": "s!L3:L3", "values": [[80]]},
+            {"range": "s!L4:L4", "values": [[""]]},
+        ])
 
     def test_missing_date_stops_without_creating_header(self) -> None:
         from daily_sales_sheet import plan_updates
