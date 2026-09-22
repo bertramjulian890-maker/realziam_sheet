@@ -31,6 +31,18 @@ python run_daily_sales.py --use-file "C:\Users\Administrator\Downloads\实际导
 python run_daily_sales.py
 ```
 
+补跑本月 1 日至昨天时，脚本只下载一次最新导出文件，再依次覆盖每个日期列：
+
+```cmd
+python run_daily_sales.py --month-to-yesterday
+```
+
+导出页面本身需已包含本月 1 日至昨天的完整数据。脚本在写入前先检查每一天都有导出记录；任意日期缺失会停止，不会开始覆盖。指定任意日期区间：
+
+```cmd
+python run_daily_sales.py --start-date 2026-09-01 --end-date 2026-09-21
+```
+
 脚本打开页面、等待加载后自动继续，无需按 Enter。旧参数 `--pause-for-login` 保留兼容，但不再暂停。网页日期条件保持原样，昨天的筛选在下载后的 XLSX 中完成。日常直接执行：
 
 ```cmd
