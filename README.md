@@ -2,6 +2,8 @@
 
 本项目独立完成以下流程：打开良域“零售额台账”、导出销售明细、只保留昨天的 `店铺号 / 店铺名称 / 销售日期 / 销售总金额`，最后按店铺号把金额写入润工作电子表格对应日期列。
 
+每次运行都会在项目目录的 `logs` 文件夹生成独立日志，记录启动参数、网页导出、日期完整性检查、逐日云表覆盖、合计和完整异常堆栈。计划任务的“上次运行结果”显示 `0x1` 时，先查看最新的 `logs/run_daily_sales_*.log`。
+
 ## 初始化（Windows CMD）
 
 ```cmd
@@ -60,6 +62,14 @@ python run_daily_sales.py --date 2026-09-14
 坐标来自 1920×1080 截图，并按当前屏幕分辨率同比缩放：导出数据 `(1848,304)`、导出历史 `(1745,304)`、最新下载 `(1427,402)`。浏览器需最大化，页面缩放建议保持 100%。
 
 PyAutoGUI 依赖可交互桌面。Windows 任务计划程序应选择“仅当用户登录时运行”；锁屏或无桌面会话下，鼠标点击通常无法可靠执行。
+
+任务计划程序操作参数示例：程序填写 Python 的完整路径，参数填写 `run_daily_sales.py --month-to-yesterday`，起始于填写项目目录。示例：
+
+```text
+程序：C:\Users\Administrator\AppData\Local\Programs\Python\Python310\python.exe
+参数：run_daily_sales.py --month-to-yesterday
+起始于：D:\git\realziam_sheet
+```
 
 ## 云表写入规则
 

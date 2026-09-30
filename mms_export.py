@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import time
 import webbrowser
 from datetime import date, timedelta
 from pathlib import Path
+
+
+LOGGER = logging.getLogger("daily_sales.export")
 
 
 REFERENCE_SIZE = (1920, 1080)
@@ -68,16 +72,21 @@ def export_sales(
     before = download_snapshot(folder)
     started_at = time.time()
 
+    LOGGER.info("打开良域页面：%s", source_url)
+    LOGGER.info("下载目录=%s；导出前已有 XLSX=%d", folder, len(before))
     webbrowser.open(source_url, new=2)
     time.sleep(page_wait_seconds)
     if os.name == "nt":
+        LOGGER.info("尝试最大化当前浏览器窗口")
         pyautogui.hotkey("win", "up")
         time.sleep(1)
 
     width, height = pyautogui.size()
     points = {name: scaled_point(x, y, width, height) for name, (x, y) in POINTS.items()}
+    LOGGER.info("屏幕分辨率=%dx%d；页面就绪后点击导出数据=%s", width, height, points["export_data"])
     pyautogui.click(*points["export_data"])
     time.sleep(export_wait_seconds)
+    LOGGER.info("点击导出历史=%s", points["export_history"])
     pyautogui.click(*points["export_history"])
     time.sleep(2)
 
@@ -88,6 +97,7 @@ def export_sales(
     stable_checks = 0
     while time.monotonic() < deadline:
         if time.monotonic() - last_click >= 5:
+            LOGGER.info("点击最新导出下载=%s", points["download_latest"])
             pyautogui.click(*points["download_latest"])
             last_click = time.monotonic()
         current = find_new_xlsx(folder, before, started_at)
@@ -98,9 +108,10 @@ def export_sales(
             else:
                 candidate, stable_size, stable_checks = current, size, 0
             if stable_checks >= 2:
+                LOGGER.info("检测到下载完成：%s (%d bytes)", current, size)
                 return current
         time.sleep(1)
-    raise TimeoutError(f"{timeout_seconds} 秒内未在 {folder} 检测到新的 XLSX 文件")
+    raise TimeoutError(f"{timeout_seconds} 秒内未在 {folder} 检测到新的 XLSX 文件；请检查浏览器登录状态、下载弹窗和页面坐标")
 
 
 def main() -> int:
