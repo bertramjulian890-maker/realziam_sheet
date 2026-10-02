@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import logging
 import json
+import re
 import sys
+from calendar import monthrange
 from datetime import date, timedelta
 from datetime import datetime
 from pathlib import Path
@@ -35,9 +37,23 @@ def resolve_business_dates(
     month_to_yesterday: bool,
     start_date: str | None,
     end_date: str | None,
+    month: str | None = None,
     *,
     today: date | None = None,
 ) -> list[date]:
+    if month:
+        if single_date or month_to_yesterday or start_date or end_date:
+            raise ValueError("--month 不能与其他日期参数同时使用")
+        match = re.fullmatch(r"(\d{4})-(\d{2})", month)
+        if not match:
+            raise ValueError(f"月份格式错误：{month}，需要 YYYY-MM")
+        year, month_number = map(int, match.groups())
+        try:
+            start = date(year, month_number, 1)
+            end = date(year, month_number, monthrange(year, month_number)[1])
+        except ValueError as exc:
+            raise ValueError(f"月份无效：{month}，需要 YYYY-MM") from exc
+        return [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
     if single_date and (month_to_yesterday or start_date or end_date):
         raise ValueError("--date 不能与批量日期参数同时使用")
     if month_to_yesterday and (start_date or end_date):
@@ -67,9 +83,10 @@ def _parse_date(value: str) -> date:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="导出昨日销售、筛选四个字段并写入润工作电子表格")
+    parser = argparse.ArgumentParser(description="导出销售数据、筛选四个字段并写入润工作电子表格")
     parser.add_argument("--date", help="单个业务日期，默认昨天")
     parser.add_argument("--month-to-yesterday", action="store_true", help="本月 1 日至昨天全部覆盖更新")
+    parser.add_argument("--month", help="指定自然月全部覆盖更新，格式 YYYY-MM，例如 2026-09")
     parser.add_argument("--start-date", help="批量开始日期 YYYY-MM-DD")
     parser.add_argument("--end-date", help="批量结束日期 YYYY-MM-DD")
     parser.add_argument("--config", default="config.json")
@@ -99,7 +116,7 @@ def main() -> int:
         config = load_config(config_path)
         LOGGER.info("配置文件=%s", config_path)
         business_dates = resolve_business_dates(
-            args.date, args.month_to_yesterday, args.start_date, args.end_date
+            args.date, args.month_to_yesterday, args.start_date, args.end_date, month=args.month
         )
         LOGGER.info("目标日期：%s 至 %s（%d 天）；dry_run=%s",
                     business_dates[0], business_dates[-1], len(business_dates), args.dry_run)

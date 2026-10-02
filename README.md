@@ -45,6 +45,20 @@ python run_daily_sales.py --month-to-yesterday
 python run_daily_sales.py --start-date 2026-09-01 --end-date 2026-09-21
 ```
 
+刷新某个已经结束的自然月（例如今天是 10 月，需要补刷 9 月）时，使用 `--month YYYY-MM`。它只校验并覆盖指定月份，不会把今天所在月份的日期混进来：
+
+```cmd
+python run_daily_sales.py --month 2026-09
+```
+
+如果 9 月导出文件已经下载好了，可直接使用该文件先做不写入云端的检查：
+
+```cmd
+python run_daily_sales.py --month 2026-09 --use-file "C:\Users\Administrator\Downloads\9月导出.xlsx" --dry-run
+```
+
+检查输出日期范围为 `2026-09-01` 至 `2026-09-30`、每天都有导出记录后，去掉 `--dry-run` 正式覆盖。网页导出文件必须包含指定月份的完整数据；脚本不会自动更改网页上的日期筛选。
+
 脚本打开页面、等待加载后自动继续，无需按 Enter。旧参数 `--pause-for-login` 保留兼容，但不再暂停。网页日期条件保持原样，昨天的筛选在下载后的 XLSX 中完成。日常直接执行：
 
 ```cmd
