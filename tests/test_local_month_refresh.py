@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 from openpyxl import Workbook, load_workbook
 
@@ -48,6 +49,25 @@ def make_target(path: Path) -> None:
 
 
 class LocalMonthRefreshTest(unittest.TestCase):
+    def test_run_month_refresh_auto_exports_when_no_export_file_given(self) -> None:
+        from local_month_refresh import run_month_refresh
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            export_file = Path(temp_dir) / "downloaded.xlsx"
+            target_file = Path(temp_dir) / "target.xlsx"
+            with patch("mms_export.export_sales", return_value=export_file) as export, \
+                    patch("local_month_refresh.refresh_local_month", return_value={"ok": True}) as refresh:
+                result = run_month_refresh(
+                    "2026-10", target_file=target_file, download_dir=temp_dir,
+                    today=date(2026, 10, 9),
+                )
+
+            self.assertEqual(result, {"ok": True})
+            self.assertEqual(export.call_args.kwargs["business_date"], date(2026, 10, 8))
+            self.assertEqual(export.call_args.kwargs["download_dir"], Path(temp_dir).resolve())
+            self.assertEqual(refresh.call_args.args, (export_file, target_file))
+            self.assertEqual(refresh.call_args.kwargs["month"], "2026-10")
+
     def test_dry_run_previews_without_mutating_and_live_run_overwrites_month(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

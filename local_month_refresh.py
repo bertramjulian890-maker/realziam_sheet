@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import shutil
 import tempfile
 from calendar import monthrange
@@ -17,6 +18,7 @@ from daily_sales_sheet import REQUIRED_HEADERS, as_amount, as_date, header_date
 
 DEFAULT_TARGET = r"D:\git\realziam_sheet\2026年汕汇全场业绩手工表.xlsx"
 TOTAL_LABELS = {"合计", "总计", "小计", "求和"}
+LOGGER = logging.getLogger("local_month_refresh")
 
 
 def month_bounds(month: str, *, today: date | None = None) -> tuple[date, date]:
@@ -223,17 +225,70 @@ def refresh_local_month(
             pass
 
 
+def run_month_refresh(
+    month: str,
+    *,
+    target_file: str | Path = DEFAULT_TARGET,
+    export_file: str | Path | None = None,
+    source_url: str | None = None,
+    download_dir: str | Path | None = None,
+    timeout_seconds: int = 180,
+    dry_run: bool = False,
+    today: date | None = None,
+) -> dict[str, Any]:
+    start_date, end_date = month_bounds(month, today=today)
+    if export_file is None:
+        from mms_export import DEFAULT_SOURCE_URL, export_sales
+
+        output_dir = Path(download_dir or Path.home() / "Downloads").expanduser().resolve()
+        LOGGER.info("阶段=网页导出；目标日期范围=%s 至 %s；下载目录=%s",
+                    start_date, end_date, output_dir)
+        export_file = export_sales(
+            business_date=end_date,
+            source_url=source_url or DEFAULT_SOURCE_URL,
+            download_dir=output_dir,
+            timeout_seconds=timeout_seconds,
+        )
+    else:
+        LOGGER.info("使用已有导出文件：%s", export_file)
+    return refresh_local_month(
+        export_file, target_file, month=month, dry_run=dry_run, today=today
+    )
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="按指定月份把销售导出数据覆盖写入本地年度业绩工作簿")
+    parser = argparse.ArgumentParser(description="自动从良域导出销售明细，并刷新本地年度业绩工作簿")
     parser.add_argument("--month", required=True,
                         help="业务月份 YYYY-MM；当月刷新 1 日至昨天，历史月份刷新整月")
-    parser.add_argument("--export-file", required=True, help="良域导出的销售明细 XLSX")
+    parser.add_argument("--export-file", help="可选：使用已有导出 XLSX；不填则自动打开网页导出")
     parser.add_argument("--target", default=DEFAULT_TARGET, help=f"本地目标工作簿，默认 {DEFAULT_TARGET}")
+    parser.add_argument("--config", default="config.json", help="读取 sourceUrl 和 downloadDir")
+    parser.add_argument("--url", help="覆盖 config 中的良域页面地址")
+    parser.add_argument("--download-dir", help="覆盖下载目录")
+    parser.add_argument("--timeout", type=int, default=180, help="等待网页下载完成的秒数")
     parser.add_argument("--dry-run", action="store_true", help="只检查并预览，不写入目标工作簿")
     args = parser.parse_args()
-    result = refresh_local_month(
-        args.export_file, args.target, month=args.month, dry_run=args.dry_run
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    project_dir = Path(__file__).resolve().parent
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = project_dir / config_path
+    try:
+        from daily_sales_sheet import load_config
+
+        config = load_config(config_path)
+        result = run_month_refresh(
+            args.month,
+            target_file=args.target,
+            export_file=args.export_file,
+            source_url=args.url or config.get("sourceUrl"),
+            download_dir=args.download_dir or config.get("downloadDir"),
+            timeout_seconds=args.timeout,
+            dry_run=args.dry_run,
+        )
+    except Exception:
+        LOGGER.exception("整月刷新失败；目标工作簿未在校验通过前写入")
+        return 1
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

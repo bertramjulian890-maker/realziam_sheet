@@ -19,16 +19,18 @@ git pull
 python -m pip install -r requirements.txt
 ```
 
-先在良域导出包含目标日期范围的销售明细，再预览，不改目标工作簿：
+执行时脚本会自动打开良域页面，按现有 PyAutoGUI 操作导出并下载 XLSX，再预览本地目标工作簿；`--dry-run` 只是不写入目标表：
 
 ```cmd
-python local_month_refresh.py --month 2026-10 --export-file "C:\Users\Administrator\Downloads\10月销售导出.xlsx" --dry-run
+python local_month_refresh.py --month 2026-10 --dry-run
 ```
 
 例如在 2026-10-09 运行，预览应显示 `startDate=2026-10-01`、`endDate=2026-10-08`、`days=8`。核对日期、门店数、清空数量和日合计无误后，正式刷新：
 
 ```cmd
-python local_month_refresh.py --month 2026-10 --export-file "C:\Users\Administrator\Downloads\10月销售导出.xlsx"
+python local_month_refresh.py --month 2026-10
 ```
+
+网页上的日期筛选仍需提前覆盖目标区间（本例为 10 月 1 日至 8 日）；导出完成后脚本会检查每天是否都有数据，不完整就停止，不会改目标表。运行时需要 Windows 用户登录且桌面可交互。已有导出文件补跑时可加 `--export-file "完整路径.xlsx"` 跳过网页操作。
 
 若目标工作簿不在默认路径，增加 `--target "完整路径.xlsx"`。刷新后打开目标文件抽查几天金额和合计；若需回退，使用旁边自动生成的 `*.backup_时间戳.xlsx` 备份。
