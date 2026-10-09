@@ -19,18 +19,28 @@ DEFAULT_TARGET = r"D:\git\realziam_sheet\2026年汕汇全场业绩手工表.xlsx
 TOTAL_LABELS = {"合计", "总计", "小计", "求和"}
 
 
-def month_bounds(month: str) -> tuple[date, date]:
+def month_bounds(month: str, *, today: date | None = None) -> tuple[date, date]:
     try:
         start = date.fromisoformat(f"{month}-01")
     except ValueError as exc:
         raise ValueError(f"月份格式错误：{month}，需要 YYYY-MM") from exc
     if len(month) != 7:
         raise ValueError(f"月份格式错误：{month}，需要 YYYY-MM")
-    return start, date(start.year, start.month, monthrange(start.year, start.month)[1])
+    month_end = date(start.year, start.month, monthrange(start.year, start.month)[1])
+    current = today or date.today()
+    if start > current:
+        raise ValueError(f"不能刷新未来月份：{month}")
+    if (start.year, start.month) == (current.year, current.month):
+        month_end = min(month_end, current - timedelta(days=1))
+        if month_end < start:
+            raise ValueError(f"{month} 尚无已结束的销售日期可刷新")
+    return start, month_end
 
 
-def read_month_export(path: str | Path, month: str) -> dict[date, dict[str, int | float]]:
-    start, end = month_bounds(month)
+def read_month_export(
+    path: str | Path, month: str, *, today: date | None = None
+) -> dict[date, dict[str, int | float]]:
+    start, end = month_bounds(month, today=today)
     workbook = load_workbook(Path(path), read_only=True, data_only=True)
     try:
         sheet = workbook.active
@@ -69,8 +79,10 @@ def _cell(row: tuple[Any, ...], index: int) -> Any:
     return row[index] if index < len(row) else None
 
 
-def _locate_month_columns(sheet: Any, month: str) -> dict[date, int]:
-    start, end = month_bounds(month)
+def _locate_month_columns(
+    sheet: Any, month: str, *, today: date | None = None
+) -> dict[date, int]:
+    start, end = month_bounds(month, today=today)
     columns: dict[date, int] = {}
     for column in range(12, sheet.max_column + 1):
         parsed = header_date(sheet.cell(2, column).value, start.year)
@@ -96,6 +108,7 @@ def refresh_local_month(
     *,
     month: str,
     dry_run: bool = False,
+    today: date | None = None,
 ) -> dict[str, Any]:
     export_path = Path(export_file).expanduser().resolve()
     target_path = Path(target_file).expanduser().resolve()
@@ -103,14 +116,15 @@ def refresh_local_month(
         raise FileNotFoundError(f"找不到导出文件：{export_path}")
     if not target_path.is_file():
         raise FileNotFoundError(f"找不到目标工作簿：{target_path}")
-    by_day = read_month_export(export_path, month)
+    start_date, end_date = month_bounds(month, today=today)
+    by_day = read_month_export(export_path, month, today=today)
 
     workbook = load_workbook(target_path)
     try:
         sheet = workbook.active
         if [str(sheet.cell(1, col).value or "").strip() for col in (1, 2)] != ["店铺号", "店铺名称"]:
             raise ValueError("目标工作簿 A1、B1 必须分别为“店铺号”“店铺名称”")
-        date_columns = _locate_month_columns(sheet, month)
+        date_columns = _locate_month_columns(sheet, month, today=today)
 
         shop_rows: dict[str, int] = {}
         for row_number in range(3, sheet.max_row + 1):
@@ -145,6 +159,8 @@ def refresh_local_month(
 
         result: dict[str, Any] = {
             "month": month,
+            "startDate": start_date.isoformat(),
+            "endDate": end_date.isoformat(),
             "exportFile": str(export_path),
             "targetFile": str(target_path),
             "sheet": sheet.title,
@@ -209,7 +225,8 @@ def refresh_local_month(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="按指定月份把销售导出数据覆盖写入本地年度业绩工作簿")
-    parser.add_argument("--month", required=True, help="业务月份 YYYY-MM，例如 2026-10")
+    parser.add_argument("--month", required=True,
+                        help="业务月份 YYYY-MM；当月刷新 1 日至昨天，历史月份刷新整月")
     parser.add_argument("--export-file", required=True, help="良域导出的销售明细 XLSX")
     parser.add_argument("--target", default=DEFAULT_TARGET, help=f"本地目标工作簿，默认 {DEFAULT_TARGET}")
     parser.add_argument("--dry-run", action="store_true", help="只检查并预览，不写入目标工作簿")

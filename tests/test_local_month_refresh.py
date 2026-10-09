@@ -56,15 +56,20 @@ class LocalMonthRefreshTest(unittest.TestCase):
             make_export(export_file)
             make_target(target_file)
 
-            preview = refresh_local_month(export_file, target_file, month="2026-10", dry_run=True)
-            self.assertEqual(preview["days"], 31)
+            today = date(2026, 10, 9)
+            preview = refresh_local_month(
+                export_file, target_file, month="2026-10", dry_run=True, today=today
+            )
+            self.assertEqual(preview["startDate"], "2026-10-01")
+            self.assertEqual(preview["endDate"], "2026-10-08")
+            self.assertEqual(preview["days"], 8)
             self.assertEqual(preview["shops"], 2)
             self.assertFalse(preview.get("verified", False))
             before = load_workbook(target_file, data_only=True)
             self.assertEqual(before.active["L3"].value, -1)
             before.close()
 
-            result = refresh_local_month(export_file, target_file, month="2026-10")
+            result = refresh_local_month(export_file, target_file, month="2026-10", today=today)
             self.assertTrue(Path(result["backupFile"]).is_file())
             saved = load_workbook(target_file, data_only=True)
             sheet = saved.active
@@ -74,6 +79,10 @@ class LocalMonthRefreshTest(unittest.TestCase):
             self.assertEqual(sheet["M3"].value, 20)
             self.assertEqual(sheet["M4"].value, 5)
             self.assertEqual(sheet["M5"].value, 25)
+            self.assertEqual(sheet["S3"].value, 80)
+            self.assertEqual(sheet["S5"].value, 85)
+            self.assertEqual(sheet["T3"].value, -1)  # Today/future columns stay untouched.
+            self.assertEqual(sheet["T5"].value, -3)
             self.assertEqual(sheet["C3"].value, "不应修改")
             saved.close()
 
@@ -82,11 +91,11 @@ class LocalMonthRefreshTest(unittest.TestCase):
             root = Path(temp_dir)
             export_file = root / "export.xlsx"
             target_file = root / "target.xlsx"
-            make_export(export_file, omit_day=17)
+            make_export(export_file, omit_day=7)
             make_target(target_file)
 
-            with self.assertRaisesRegex(ValueError, "缺少整日数据.*2026-10-17"):
-                refresh_local_month(export_file, target_file, month="2026-10")
+            with self.assertRaisesRegex(ValueError, "缺少整日数据.*2026-10-07"):
+                refresh_local_month(export_file, target_file, month="2026-10", today=date(2026, 10, 9))
 
             unchanged = load_workbook(target_file, data_only=True)
             self.assertEqual(unchanged.active["L3"].value, -1)
@@ -106,11 +115,23 @@ class LocalMonthRefreshTest(unittest.TestCase):
             make_target(target_file)
 
             with self.assertRaisesRegex(ValueError, "目标工作簿找不到.*UNKNOWN"):
-                refresh_local_month(export_file, target_file, month="2026-10")
+                refresh_local_month(export_file, target_file, month="2026-10", today=date(2026, 10, 9))
 
             unchanged = load_workbook(target_file, data_only=True)
             self.assertEqual(unchanged.active["L3"].value, -1)
             unchanged.close()
+
+    def test_current_month_stops_yesterday_but_past_month_is_full(self) -> None:
+        from local_month_refresh import month_bounds
+
+        self.assertEqual(
+            month_bounds("2026-10", today=date(2026, 10, 9)),
+            (date(2026, 10, 1), date(2026, 10, 8)),
+        )
+        self.assertEqual(
+            month_bounds("2026-09", today=date(2026, 10, 9)),
+            (date(2026, 9, 1), date(2026, 9, 30)),
+        )
 
 
 if __name__ == "__main__":

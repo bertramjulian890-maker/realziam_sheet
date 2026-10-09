@@ -1,6 +1,6 @@
 # 本地 XLSX 整月刷新
 
-本模式不连接润工作接口。它把良域导出的销售明细按整月覆盖到本地年度工作簿：
+本模式不连接润工作接口。它把良域导出的销售明细覆盖到本地年度工作簿：**指定的是当前月份时处理 1 日至昨天；指定过去月份时处理该月完整月份**。例如 2026-10-09 执行 `--month 2026-10`，只刷新 10 月 1 日至 8 日，不要求也不改动今天及未来日期。
 
 - 默认目标文件：`D:\git\realziam_sheet\2026年汕汇全场业绩手工表.xlsx`
 - 匹配导出表字段：`店铺号`、`店铺名称`、`销售日期`、`销售总金额`
@@ -19,13 +19,13 @@ git pull
 python -m pip install -r requirements.txt
 ```
 
-先预览，不改目标工作簿：
+先在良域导出包含目标日期范围的销售明细，再预览，不改目标工作簿：
 
 ```cmd
 python local_month_refresh.py --month 2026-10 --export-file "C:\Users\Administrator\Downloads\10月销售导出.xlsx" --dry-run
 ```
 
-核对月份、天数、门店数、清空数量和日合计无误后，正式刷新：
+例如在 2026-10-09 运行，预览应显示 `startDate=2026-10-01`、`endDate=2026-10-08`、`days=8`。核对日期、门店数、清空数量和日合计无误后，正式刷新：
 
 ```cmd
 python local_month_refresh.py --month 2026-10 --export-file "C:\Users\Administrator\Downloads\10月销售导出.xlsx"
