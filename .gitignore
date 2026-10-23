@@ -1,4 +1,6 @@
 config.json
+.browser-profile/
+logs/
 .venv/
 __pycache__/
 *.pyc

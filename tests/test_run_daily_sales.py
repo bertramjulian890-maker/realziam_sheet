@@ -5,6 +5,20 @@ from datetime import date
 
 
 class RunDailySalesTest(unittest.TestCase):
+    def test_no_date_defaults_to_month_through_yesterday(self):
+        from run_daily_sales import resolve_business_dates
+        self.assertEqual(resolve_business_dates(None, False, None, None, today=date(2026, 10, 23)),
+                         [date(2026, 10, day) for day in range(1, 23)])
+
+    def test_explicit_date_only_processes_that_day(self):
+        from run_daily_sales import resolve_business_dates
+        self.assertEqual(resolve_business_dates("2026-10-15", False, None, None), [date(2026, 10, 15)])
+
+    def test_first_day_refreshes_previous_full_month(self):
+        from run_daily_sales import resolve_business_dates
+        dates = resolve_business_dates(None, False, None, None, today=date(2026, 10, 1))
+        self.assertEqual((dates[0], dates[-1], len(dates)), (date(2026, 9, 1), date(2026, 9, 30), 30))
+
     def test_month_to_yesterday_uses_first_day_through_previous_day(self) -> None:
         from run_daily_sales import resolve_business_dates
 

@@ -69,7 +69,8 @@ def resolve_business_dates(
     elif start_date:
         start, end = _parse_date(start_date), _parse_date(end_date)
     else:
-        return [date.today() - timedelta(days=1)]
+        end = (today or date.today()) - timedelta(days=1)
+        start = end.replace(day=1)
     if end < start:
         raise ValueError("结束日期不能早于开始日期")
     return [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
@@ -84,7 +85,7 @@ def _parse_date(value: str) -> date:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="导出销售数据、筛选四个字段并写入润工作电子表格")
-    parser.add_argument("--date", help="单个业务日期，默认昨天")
+    parser.add_argument("--date", help="指定日期只处理当天；未指定日期范围时默认月度刷新")
     parser.add_argument("--month-to-yesterday", action="store_true", help="本月 1 日至昨天全部覆盖更新")
     parser.add_argument("--month", help="指定自然月全部覆盖更新，格式 YYYY-MM，例如 2026-09")
     parser.add_argument("--start-date", help="批量开始日期 YYYY-MM-DD")
@@ -98,6 +99,9 @@ def main() -> int:
     parser.add_argument("--sheet-id")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument("--export-engine", choices=["pyautogui", "playwright", "api"], help="取数方式；api 为纯接口取数")
+    parser.add_argument("--headed", action="store_true", help="Playwright 显示浏览器，便于调试")
+    parser.add_argument("--ca-login", action="store_true", help="Playwright 使用本机证书认证")
     args = parser.parse_args()
 
     project_dir = Path(__file__).resolve().parent
@@ -125,14 +129,31 @@ def main() -> int:
             source_file = Path(args.use_file).expanduser().resolve()
             LOGGER.info("使用指定导出文件：%s", source_file)
         else:
-            LOGGER.info("阶段=网页导出；下载目录=%s", download_dir)
-            source_file = export_sales(
-                business_date=business_dates[-1],
+            LOGGER.info("阶段=取数；下载目录=%s", download_dir)
+            engine = args.export_engine or config.get("exportEngine", "api")
+            if engine not in {"pyautogui", "playwright", "api"}:
+                raise ValueError("exportEngine 只能是 pyautogui、playwright 或 api")
+            if args.ca_login and engine not in {"playwright", "api"}:
+                raise ValueError("--ca-login 需要选择 playwright 或 api")
+            options = dict(
                 source_url=config.get("sourceUrl") or DEFAULT_SOURCE_URL,
                 download_dir=download_dir,
-                pause_for_login=args.pause_for_login,
                 timeout_seconds=args.timeout,
             )
+            LOGGER.info("取数方式=%s", engine)
+            if engine == "api":
+                from mms_api_export import export_sales as api_export, project_settings
+                project, position = project_settings({**config, "sourceUrl": config.get("sourceUrl") or DEFAULT_SOURCE_URL})
+                source_file = api_export(project_code=project, position_id=position,
+                                         start_date=business_dates[0], end_date=business_dates[-1],
+                                         download_dir=download_dir, timeout_seconds=args.timeout,
+                                         auth=config.get("mmsApi", {}))
+            elif engine == "playwright":
+                from mms_playwright import export_sales as browser_export
+                source_file = browser_export(**options, headed=args.headed, ca_login=args.ca_login)
+            else:
+                source_file = export_sales(**options, business_date=business_dates[-1],
+                                          pause_for_login=args.pause_for_login)
         LOGGER.info("导出文件就绪：%s (%d bytes)", source_file, source_file.stat().st_size)
 
         # Validate every target date before any cloud write, so a partial export
