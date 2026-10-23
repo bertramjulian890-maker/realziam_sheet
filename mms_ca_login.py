@@ -3,12 +3,33 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
+import re
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlparse
 
 SSO = "https://ldap.crc.com.cn"
 MMS = "https://mms.crland.com.cn"
+LOGGER = logging.getLogger("daily_sales.export")
+
+
+def _lck_from_url(url):
+    parsed = urlparse(url)
+    for query in (parsed.query, parsed.fragment.partition("?")[2], parsed.fragment):
+        value = parse_qs(query).get("lck", [""])[0]
+        if value:
+            return value
+    return ""
+
+
+def _auth_url_summary(url):
+    parsed = urlparse(url)
+    def keys(query):
+        return ",".join(sorted(key for key in parse_qs(query)
+                               if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]{0,63}", key))) or "无"
+    fragment_query = parsed.fragment.partition("?")[2] or parsed.fragment
+    return f"主机={parsed.hostname}；query字段={keys(parsed.query)}；fragment字段={keys(fragment_query)}"
 
 
 class _HiddenFields(HTMLParser):
@@ -87,9 +108,11 @@ def login_with_ca(context, *, timeout_seconds=60, connect=None, name=None, pin=N
         }, timeout=timeout)
         if not auth.ok:
             raise RuntimeError(f"认证中心 HTTP {auth.status}")
-        lck = parse_qs(urlparse(auth.url).query).get("lck", [""])[0]
+        lck = _lck_from_url(auth.url)
         if not lck:
-            raise RuntimeError("认证中心未返回 lck；需要核对当前认证流程")
+            LOGGER.error("认证跳转诊断：HTTP=%s；%s", auth.status, _auth_url_summary(auth.url))
+            raise RuntimeError("认证跳转地址的 query/fragment 中均未找到 lck；请提供上方认证跳转诊断以核对实际流程")
+        LOGGER.info("已从认证跳转地址取得 lck，继续证书认证")
         result = _json_response(request.post(SSO + "/authn/authn/authExecute?lang=zh_CN", data={
             "authChainCode": "3d56ea21707c4bbbbcb7c54e64b9a10f",
             "authModuleCode": "authAoLianCA", "entityId": "CRLD_mms",

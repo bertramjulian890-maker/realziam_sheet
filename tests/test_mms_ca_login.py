@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from mms_ca_login import _HiddenFields, login_with_ca
+from mms_ca_login import _HiddenFields, login_with_ca, _lck_from_url, _auth_url_summary
 
 
 def response(data=None, *, text="", url="", ok=True):
@@ -13,6 +13,18 @@ def response(data=None, *, text="", url="", ok=True):
 
 
 class CaLoginTest(unittest.TestCase):
+    def test_lck_inside_hash_route_is_supported(self):
+        self.assertEqual(_lck_from_url('https://ldap.crc.com.cn/#/login?lck=abc%2B123&next=x'), 'abc+123')
+
+    def test_lck_in_regular_query_still_supported(self):
+        self.assertEqual(_lck_from_url('https://ldap.crc.com.cn/auth?lck=abc%2F123&other=x'), 'abc/123')
+
+    def test_missing_lck_diagnostic_does_not_expose_query_values(self):
+        summary = _auth_url_summary('https://ldap.crc.com.cn/secret-route?ticket=secret-ticket#/login?code=secret-code')
+        self.assertIn('ticket', summary)
+        self.assertIn('code', summary)
+        self.assertNotIn('secret', summary)
+
     def test_authentication_uses_browser_cookie_session_and_closes_socket(self):
         socket = Mock()
         socket.recv.side_effect = [json.dumps({"data": {"usbkey": [
