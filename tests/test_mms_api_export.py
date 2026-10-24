@@ -47,7 +47,8 @@ class ApiExportTest(unittest.TestCase):
         import run_daily_sales
 
         config = {"sourceUrl": "https://mms.crland.com.cn/?projectCode=20071",
-                  "mmsApi": {"positionId": "position"}}
+                  "mmsApi": {"positionId": "position"},
+                  "monthlySpreadsheetTokens": {"2026-09": "test-month-token"}}
         with patch("sys.argv", ["run_daily_sales.py", "--export-engine", "api", "--month", "2026-09", "--dry-run"]), \
              patch.object(run_daily_sales, "configure_logging", return_value=Path("test.log")), \
              patch("daily_sales_sheet.load_config", return_value=config), \

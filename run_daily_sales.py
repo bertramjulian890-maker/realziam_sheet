@@ -13,7 +13,6 @@ from pathlib import Path
 LOGGER = logging.getLogger("daily_sales")
 DEFAULT_SOURCE_URL = "https://mms.crland.com.cn/bmp/saleData?projectName=汕头万象汇&projectCode=20071&projectId=266"
 DEFAULT_API_BASE_URL = "http://10.90.10.66:7055/"
-DEFAULT_SPREADSHEET_TOKEN = "shtk99v6k5T9IvGMQjKnUbxZqub"
 
 
 def configure_logging(project_dir: Path) -> Path:
@@ -83,6 +82,32 @@ def _parse_date(value: str) -> date:
         raise ValueError(f"日期格式错误：{value}，需要 YYYY-MM-DD") from exc
 
 
+def failure_guidance(error: Exception) -> str:
+    """Translate common operational failures into an actionable next step."""
+    message = str(error)
+    if "monthlySpreadsheetTokens" in message or "数据表 token" in message:
+        return "打开 config.json，在 monthlySpreadsheetTokens 中填写报错月份对应的数据表 token；其他未用月份可留空。"
+    if "caName" in message or "caPin" in message or "MMS_CA_NAME" in message:
+        return "打开 config.json，检查 mmsApi.caName 和 mmsApi.caPin 是否已填写。"
+    if "证书客户端" in message or "wss://127.0.0.1:10022" in message:
+        return "确认已登录 Windows，启动本机 CA/证书客户端并插好证书，再双击重试。"
+    if "证书枚举" in message or "证书序号" in message or "证书签名" in message:
+        return "检查证书是否可用、PIN 是否正确；若电脑有多个证书，可核对 config.json 的 mmsApi.certificateIndex。"
+    if "CA 登录失败" in message or "认证中心" in message or "认证回调" in message or "良域登录" in message:
+        return "证书步骤已开始但登录没有完成。检查内网、账号权限和本机证书客户端；完整阶段及 HTTP 状态见日志。"
+    if "requirements-api.txt" in message or "No module named" in message:
+        return "在项目文件夹打开 CMD，运行：python -m pip install -r requirements-api.txt，然后重试。"
+    if "导出任务" in message or "导出记录" in message or "等待本次导出" in message:
+        return "检查良域内网连接、账号的万象汇项目权限，以及导出任务是否完成；确认后再重试。"
+    if "下载" in message or "XLSX" in message or "导出表" in message:
+        return "检查下载文件是否完整、是否包含目标日期和销售字段；完整日志会指出失败阶段。"
+    if "润工作" in message or "云表" in message or "工作表" in message or "写入后" in message or "回读校验" in message:
+        return "检查润工作内网接口是否可访问、config.json 的表格令牌/工作表 ID 是否正确，再重试。"
+    if isinstance(error, (json.JSONDecodeError, FileNotFoundError)) or "config.json" in message:
+        return "检查项目目录是否存在 config.json，且内容是有效 JSON；可参考 config.example.json 补齐配置。"
+    return "查看下方日志路径中的完整错误详情；日志按阶段记录问题，可把最后的 ERROR 和 traceback 发给维护人员。"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="导出销售数据、筛选四个字段并写入润工作电子表格")
     parser.add_argument("--date", help="指定日期只处理当天；未指定日期范围时默认月度刷新")
@@ -111,7 +136,7 @@ def main() -> int:
     try:
         # Import the application modules after logging is active, so missing
         # packages on a fresh machine are recorded instead of ending silently.
-        from daily_sales_sheet import filter_export, load_config, sync_file
+        from daily_sales_sheet import filter_export, load_config, spreadsheet_token_for_month, sync_file
         from mms_export import export_sales
 
         config_path = Path(args.config)
@@ -124,6 +149,13 @@ def main() -> int:
         )
         LOGGER.info("目标日期：%s 至 %s（%d 天）；dry_run=%s",
                     business_dates[0], business_dates[-1], len(business_dates), args.dry_run)
+        months = sorted({business_date.strftime("%Y-%m") for business_date in business_dates})
+        token_override = (args.spreadsheet_token or "").strip()
+        tokens_by_month = {
+            month: token_override or spreadsheet_token_for_month(config, month)
+            for month in months
+        }
+        LOGGER.info("目标数据表月份：%s", "、".join(months))
         download_dir = args.download_dir or config.get("downloadDir") or str(Path.home() / "Downloads")
         if args.use_file:
             source_file = Path(args.use_file).expanduser().resolve()
@@ -165,14 +197,15 @@ def main() -> int:
 
         common = {
             "api_base_url": args.api_base_url or config.get("apiBaseUrl") or DEFAULT_API_BASE_URL,
-            "spreadsheet_token": args.spreadsheet_token or config.get("spreadsheetToken") or DEFAULT_SPREADSHEET_TOKEN,
             "sheet_id": args.sheet_id or config.get("sheetId") or "",
             "dry_run": args.dry_run,
         }
         results = []
         for index, business_date in enumerate(business_dates, start=1):
             LOGGER.info("阶段=云表覆盖；进度=%d/%d；日期=%s", index, len(business_dates), business_date)
-            result = sync_file(source_file, business_date, **common)
+            result = sync_file(source_file, business_date,
+                               spreadsheet_token=tokens_by_month[business_date.strftime("%Y-%m")],
+                               **common)
             results.append(result)
             LOGGER.info("日期完成=%s；工作表=%s；列=%s；店铺=%d；清空=%d；合计单元格=%s；合计=%s；校验=%s",
                         business_date, result["sheetId"], result["targetColumn"],
@@ -189,8 +222,11 @@ def main() -> int:
         print(json.dumps(output, ensure_ascii=False, indent=2))
         LOGGER.info("全部完成；处理天数=%d", len(results))
         return 0
-    except Exception:
+    except Exception as exc:
         LOGGER.exception("任务失败")
+        guidance = failure_guidance(exc)
+        LOGGER.error("处理建议：%s", guidance)
+        print(f"\n处理建议：{guidance}", file=sys.stderr)
         print(f"任务失败，详细日志：{log_path}", file=sys.stderr)
         return 1
 

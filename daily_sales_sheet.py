@@ -16,7 +16,20 @@ from rwork_sheets_api import RworkSheetsClient
 
 REQUIRED_HEADERS = ("店铺号", "店铺名称", "销售日期", "销售总金额")
 DEFAULT_API_BASE_URL = "http://10.90.10.66:7055/"
-DEFAULT_SPREADSHEET_TOKEN = "shtk99v6k5T9IvGMQjKnUbxZqub"
+
+
+def spreadsheet_token_for_month(config: dict[str, Any], month_key: str) -> str:
+    """Return the configured cloud spreadsheet token for YYYY-MM."""
+    tokens = config.get("monthlySpreadsheetTokens")
+    if not isinstance(tokens, dict):
+        raise ValueError("config.json 缺少 monthlySpreadsheetTokens 月度数据表 token 配置")
+    token = tokens.get(month_key)
+    if not isinstance(token, str) or not token.strip():
+        raise ValueError(
+            f"目标月份 {month_key} 的数据表 token 为空；请在 config.json 的 "
+            f"monthlySpreadsheetTokens[\"{month_key}\"] 填写对应 token。任务已停止，尚未取数或写入云表。"
+        )
+    return token.strip()
 
 
 def as_date(value: Any) -> date | None:
@@ -300,11 +313,15 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     config = load_config(args.config)
+    business_date = parse_business_date(args.date)
+    spreadsheet_token = args.spreadsheet_token or spreadsheet_token_for_month(
+        config, business_date.strftime("%Y-%m")
+    )
     result = sync_file(
         args.file,
-        parse_business_date(args.date),
+        business_date,
         api_base_url=args.api_base_url or config.get("apiBaseUrl") or DEFAULT_API_BASE_URL,
-        spreadsheet_token=args.spreadsheet_token or config.get("spreadsheetToken") or DEFAULT_SPREADSHEET_TOKEN,
+        spreadsheet_token=spreadsheet_token,
         sheet_id=args.sheet_id or config.get("sheetId") or "",
         output_file=args.output,
         max_rows=args.max_rows,

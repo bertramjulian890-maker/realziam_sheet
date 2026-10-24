@@ -13,7 +13,7 @@ python -m pip install -r requirements.txt
 copy config.example.json config.json
 ```
 
-默认配置已经填写接口地址、目标电子表格令牌、良域页面和下载目录。若目标电子表格只有一个工作表，`sheetId` 可以留空；多个工作表时必须填写实际 ID。
+示例配置已填写接口地址、良域页面和下载目录。请在 `monthlySpreadsheetTokens` 中填写每个月对应的电子表格 token；未使用的月份可以留空。若目标电子表格只有一个工作表，`sheetId` 可以留空；多个工作表时必须填写实际 ID。
 
 ## 安全测试
 
@@ -71,7 +71,7 @@ python run_daily_sales.py
 python run_daily_sales.py --date 2026-09-14
 ```
 
-## 纯接口取数（Windows CMD，待内网联调）
+## 纯接口取数（Windows CMD）
 
 已接入已确认的销售导出接口：证书登录 → 创建导出 → 轮询本次任务 → `tokenUrl` 获取临时下载地址 → 下载并验证销售 Excel。该模式不启动浏览器，不依赖桌面鼠标。
 
@@ -90,6 +90,16 @@ python -m pip install -r requirements-api.txt
   "caName": "你的认证账号",
   "caPin": "你的证书PIN",
   "certificateIndex": 0
+}
+```
+
+云表按月份分别配置 token，使用 `YYYY-MM` 作为键。每天运行时按本次业务日期选择对应 token：每月 1 日刷新上月整月，因此使用上月键；每月 2 日起刷新当月数据，因此使用当月键。跨月日期范围会按每天的业务日期选 token。目标月份 token 未填写时，程序会在发起良域导出前停止并指出缺少的配置。
+
+```json
+"monthlySpreadsheetTokens": {
+  "2026-09": "9月电子表格token",
+  "2026-10": "10月电子表格token",
+  "2026-11": ""
 }
 ```
 
