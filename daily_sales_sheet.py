@@ -19,17 +19,22 @@ DEFAULT_API_BASE_URL = "http://10.90.10.66:7055/"
 
 
 def spreadsheet_token_for_month(config: dict[str, Any], month_key: str) -> str:
-    """Return the configured cloud spreadsheet token for YYYY-MM."""
-    tokens = config.get("monthlySpreadsheetTokens")
-    if not isinstance(tokens, dict):
-        raise ValueError("config.json 缺少 monthlySpreadsheetTokens 月度数据表 token 配置")
-    token = tokens.get(month_key)
+    """Return the shared spreadsheet token (month retained for callers)."""
+    token = config.get("spreadsheetToken")
     if not isinstance(token, str) or not token.strip():
-        raise ValueError(
-            f"目标月份 {month_key} 的数据表 token 为空；请在 config.json 的 "
-            f"monthlySpreadsheetTokens[\"{month_key}\"] 填写对应 token。任务已停止，尚未取数或写入云表。"
-        )
+        raise ValueError("config.json 的 spreadsheetToken 为空；请填写共用电子表格 token")
     return token.strip()
+
+
+def sheet_id_for_month(config: dict[str, Any], month_key: str) -> str:
+    sheets = config.get("monthlySheetIds")
+    sheet_id = sheets.get(month_key) if isinstance(sheets, dict) else None
+    if not isinstance(sheet_id, str) or not sheet_id.strip():
+        raise ValueError(
+            f'目标月份 {month_key} 的工作表 ID 为空；请填写 config.json 的 '
+            f'monthlySheetIds["{month_key}"]。任务已停止，尚未取数或写入云表。'
+        )
+    return sheet_id.strip()
 
 
 def as_date(value: Any) -> date | None:
@@ -322,7 +327,7 @@ def main() -> int:
         business_date,
         api_base_url=args.api_base_url or config.get("apiBaseUrl") or DEFAULT_API_BASE_URL,
         spreadsheet_token=spreadsheet_token,
-        sheet_id=args.sheet_id or config.get("sheetId") or "",
+        sheet_id=(args.sheet_id or "").strip() or sheet_id_for_month(config, business_date.strftime("%Y-%m")),
         output_file=args.output,
         max_rows=args.max_rows,
         dry_run=args.dry_run,

@@ -10,7 +10,7 @@
 python -m pip install -r requirements-api.txt
 ```
 
-若还没有 `config.json`，复制 `config.example.json` 并重命名为 `config.json`。在 `mmsApi` 中填写 `caName` 和 `caPin`；在 `monthlySpreadsheetTokens` 中按 `YYYY-MM` 填入每个月对应的电子表格 token。未用月份可以留空，但本次运行涉及的月份 token 为空时会立即停止，并提示需要填写的月份；不会先调用良域导出，也不会写云表。检查工作表 ID 和下载目录。`config.json` 是本地文件，不会提交到 Git。
+若还没有 `config.json`，复制 `config.example.json` 并重命名为 `config.json`。在 `mmsApi` 中填写 `caName` 和 `caPin`；`spreadsheetToken` 填共用电子表格 token，`monthlySheetIds` 按 `YYYY-MM` 填各月工作表 ID。链接 `/sheets/` 后为 token，`?sheet=` 后为工作表 ID。未用月份可以留空，但所需月份 ID 为空会在良域导出前停止并提示。旧的 `monthlySpreadsheetTokens` 和顶层 `sheetId` 需要替换。检查下载目录。`config.json` 是本地文件，不会提交到 Git。
 
 运行前请确认 Windows 用户已登录、本机 CA 证书客户端正在运行、证书可用，并能访问良域和润工作内网接口。
 
@@ -48,8 +48,8 @@ powershell -ExecutionPolicy Bypass -File ".\安装每日计划任务.ps1" -AtTim
 ## 日期规则
 
 - 每日计划任务和双击入口：本月 1 日至昨天。
-- 月初第一天运行：刷新上一个完整自然月，并使用上月对应的 `YYYY-MM` token；每月 2 日起使用当月 token。
-- 手动刷新日期区间时，区间跨越月份会逐日选用各自月份的 token；缺少任一月份 token 会在导出前停止。
+- 月初第一天运行：刷新上一个完整自然月，使用上月工作表 ID；每月 2 日起使用当月工作表 ID，电子表格 token 共用。
+- 手动刷新跨月日期区间时，逐日使用对应月份的工作表 ID；缺少任一所需 ID 会在导出前停止。
 - 要刷新指定整月：
 
 ```cmd

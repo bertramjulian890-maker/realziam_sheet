@@ -13,7 +13,7 @@ python -m pip install -r requirements.txt
 copy config.example.json config.json
 ```
 
-示例配置已填写接口地址、良域页面和下载目录。请在 `monthlySpreadsheetTokens` 中填写每个月对应的电子表格 token；未使用的月份可以留空。若目标电子表格只有一个工作表，`sheetId` 可以留空；多个工作表时必须填写实际 ID。
+示例配置已填写接口地址、良域页面和下载目录。`spreadsheetToken` 是共用电子表格 token；在 `monthlySheetIds` 中填写各月工作表 ID，未使用月份可以留空。链接 `/sheets/` 后为 token，`?sheet=` 后为工作表 ID。
 
 ## 安全测试
 
@@ -93,12 +93,13 @@ python -m pip install -r requirements-api.txt
 }
 ```
 
-云表按月份分别配置 token，使用 `YYYY-MM` 作为键。每天运行时按本次业务日期选择对应 token：每月 1 日刷新上月整月，因此使用上月键；每月 2 日起刷新当月数据，因此使用当月键。跨月日期范围会按每天的业务日期选 token。目标月份 token 未填写时，程序会在发起良域导出前停止并指出缺少的配置。
+云表共用 `spreadsheetToken`，按 `monthlySheetIds` 的 `YYYY-MM` 键选择工作表。每月 1 日刷新上月整月，使用上月工作表；每月 2 日起使用当月工作表。跨月区间逐日选择对应工作表。所需月份 ID 为空时，在良域导出前停止并提示。旧的 `monthlySpreadsheetTokens` 和顶层 `sheetId` 请替换为以下结构：
 
 ```json
-"monthlySpreadsheetTokens": {
-  "2026-09": "9月电子表格token",
-  "2026-10": "10月电子表格token",
+"spreadsheetToken": "shtk94liHum47bU7iGxeFGhvSld",
+"monthlySheetIds": {
+  "2026-09": "n1af7R",
+  "2026-10": "BRy3Zv",
   "2026-11": ""
 }
 ```

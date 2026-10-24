@@ -85,8 +85,10 @@ def _parse_date(value: str) -> date:
 def failure_guidance(error: Exception) -> str:
     """Translate common operational failures into an actionable next step."""
     message = str(error)
-    if "monthlySpreadsheetTokens" in message or "数据表 token" in message:
-        return "打开 config.json，在 monthlySpreadsheetTokens 中填写报错月份对应的数据表 token；其他未用月份可留空。"
+    if "monthlySheetIds" in message:
+        return "打开 config.json，在 monthlySheetIds 中填写报错月份对应的工作表 ID；其他未用月份可留空。"
+    if "spreadsheetToken" in message:
+        return "打开 config.json，填写共用电子表格 spreadsheetToken（链接 /sheets/ 后的部分）。"
     if "caName" in message or "caPin" in message or "MMS_CA_NAME" in message:
         return "打开 config.json，检查 mmsApi.caName 和 mmsApi.caPin 是否已填写。"
     if "证书客户端" in message or "wss://127.0.0.1:10022" in message:
@@ -136,7 +138,7 @@ def main() -> int:
     try:
         # Import the application modules after logging is active, so missing
         # packages on a fresh machine are recorded instead of ending silently.
-        from daily_sales_sheet import filter_export, load_config, spreadsheet_token_for_month, sync_file
+        from daily_sales_sheet import filter_export, load_config, spreadsheet_token_for_month, sheet_id_for_month, sync_file
         from mms_export import export_sales
 
         config_path = Path(args.config)
@@ -153,6 +155,11 @@ def main() -> int:
         token_override = (args.spreadsheet_token or "").strip()
         tokens_by_month = {
             month: token_override or spreadsheet_token_for_month(config, month)
+            for month in months
+        }
+        sheet_override = (args.sheet_id or "").strip()
+        sheets_by_month = {
+            month: sheet_override or sheet_id_for_month(config, month)
             for month in months
         }
         LOGGER.info("目标数据表月份：%s", "、".join(months))
@@ -197,7 +204,6 @@ def main() -> int:
 
         common = {
             "api_base_url": args.api_base_url or config.get("apiBaseUrl") or DEFAULT_API_BASE_URL,
-            "sheet_id": args.sheet_id or config.get("sheetId") or "",
             "dry_run": args.dry_run,
         }
         results = []
@@ -205,6 +211,7 @@ def main() -> int:
             LOGGER.info("阶段=云表覆盖；进度=%d/%d；日期=%s", index, len(business_dates), business_date)
             result = sync_file(source_file, business_date,
                                spreadsheet_token=tokens_by_month[business_date.strftime("%Y-%m")],
+                               sheet_id=sheets_by_month[business_date.strftime("%Y-%m")],
                                **common)
             results.append(result)
             LOGGER.info("日期完成=%s；工作表=%s；列=%s；店铺=%d；清空=%d；合计单元格=%s；合计=%s；校验=%s",

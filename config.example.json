@@ -1,7 +1,7 @@
 {
   "apiBaseUrl": "http://10.90.10.66:7055/",
-  "sheetId": "",
-  "monthlySpreadsheetTokens": {
+  "spreadsheetToken": "shtk94liHum47bU7iGxeFGhvSld",
+  "monthlySheetIds": {
     "2026-01": "",
     "2026-02": "",
     "2026-03": "",
@@ -10,8 +10,8 @@
     "2026-06": "",
     "2026-07": "",
     "2026-08": "",
-    "2026-09": "",
-    "2026-10": "",
+    "2026-09": "n1af7R",
+    "2026-10": "BRy3Zv",
     "2026-11": "",
     "2026-12": ""
   },
