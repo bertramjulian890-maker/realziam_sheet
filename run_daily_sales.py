@@ -5,6 +5,7 @@ import logging
 import json
 import re
 import sys
+from urllib.request import Request, urlopen
 from calendar import monthrange
 from datetime import date, timedelta
 from datetime import datetime
@@ -110,6 +111,30 @@ def failure_guidance(error: Exception) -> str:
     return "查看下方日志路径中的完整错误详情；日志按阶段记录问题，可把最后的 ERROR 和 traceback 发给维护人员。"
 
 
+def notify_failure(webhook_url: str, error: Exception, log_path: Path) -> bool:
+    if not webhook_url.strip():
+        return False
+    message = (
+        "【万象汇每日销售同步失败】\n"
+        f"时间：{datetime.now():%Y-%m-%d %H:%M:%S}\n"
+        f"错误：{str(error)[:1200]}\n"
+        f"日志：{log_path}"
+    )
+    request = Request(
+        webhook_url.strip(),
+        data=json.dumps({"msg_type": "text", "content": {"text": message}}, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=8) as response:
+            response.read()
+        return True
+    except Exception:
+        LOGGER.exception("飞书失败通知发送失败")
+        return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="导出销售数据、筛选四个字段并写入润工作电子表格")
     parser.add_argument("--date", help="指定日期只处理当天；未指定日期范围时默认月度刷新")
@@ -133,6 +158,7 @@ def main() -> int:
 
     project_dir = Path(__file__).resolve().parent
     log_path = configure_logging(project_dir)
+    config: dict = {}
     LOGGER.info("启动 run_daily_sales；工作目录=%s；参数=%s", Path.cwd(), sys.argv[1:])
     LOGGER.info("运行日志：%s", log_path)
     try:
@@ -233,6 +259,8 @@ def main() -> int:
         LOGGER.exception("任务失败")
         guidance = failure_guidance(exc)
         LOGGER.error("处理建议：%s", guidance)
+        if notify_failure(str(config.get("failureWebhookUrl") or ""), exc, log_path):
+            LOGGER.info("飞书失败通知已发送")
         print(f"\n处理建议：{guidance}", file=sys.stderr)
         print(f"任务失败，详细日志：{log_path}", file=sys.stderr)
         return 1

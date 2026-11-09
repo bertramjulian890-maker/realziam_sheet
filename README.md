@@ -13,7 +13,7 @@ python -m pip install -r requirements.txt
 copy config.example.json config.json
 ```
 
-示例配置已填写接口地址、良域页面和下载目录。`spreadsheetToken` 是共用电子表格 token；在 `monthlySheetIds` 中填写各月工作表 ID，未使用月份可以留空。链接 `/sheets/` 后为 token，`?sheet=` 后为工作表 ID。
+示例配置已填写接口地址、良域页面和下载目录。`spreadsheetToken` 是共用电子表格 token；在 `monthlySheetIds` 中填写各月工作表 ID，未使用月份可以留空。链接 `/sheets/` 后为 token，`?sheet=` 后为工作表 ID。`failureWebhookUrl` 可选填飞书群机器人 Webhook，任务失败时通知，成功时保持静默。
 
 ## 安全测试
 

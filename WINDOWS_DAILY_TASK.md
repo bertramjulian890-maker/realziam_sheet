@@ -10,7 +10,7 @@
 python -m pip install -r requirements-api.txt
 ```
 
-若还没有 `config.json`，复制 `config.example.json` 并重命名为 `config.json`。在 `mmsApi` 中填写 `caName` 和 `caPin`；`spreadsheetToken` 填共用电子表格 token，`monthlySheetIds` 按 `YYYY-MM` 填各月工作表 ID。链接 `/sheets/` 后为 token，`?sheet=` 后为工作表 ID。未用月份可以留空，但所需月份 ID 为空会在良域导出前停止并提示。旧的 `monthlySpreadsheetTokens` 和顶层 `sheetId` 需要替换。检查下载目录。`config.json` 是本地文件，不会提交到 Git。
+若还没有 `config.json`，复制 `config.example.json` 并重命名为 `config.json`。在 `mmsApi` 中填写 `caName` 和 `caPin`；`spreadsheetToken` 填共用电子表格 token，`monthlySheetIds` 按 `YYYY-MM` 填各月工作表 ID。链接 `/sheets/` 后为 token，`?sheet=` 后为工作表 ID。未用月份可以留空，但所需月份 ID 为空会在良域导出前停止并提示。`failureWebhookUrl` 可填写飞书群机器人 Webhook；任务失败时发送通知，成功时不发送。检查下载目录。`config.json` 是本地文件，不会提交到 Git。
 
 运行前请确认 Windows 用户已登录、本机 CA 证书客户端正在运行、证书可用，并能访问良域和润工作内网接口。
 
