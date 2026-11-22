@@ -191,9 +191,8 @@ def plan_updates(
         if shop_id in id_to_row:
             raise ValueError(f"云表格店铺号重复：{shop_id}")
         id_to_row[shop_id] = offset
-    missing = [item["店铺号"] for item in rows if item["店铺号"] not in id_to_row]
-    if missing:
-        raise ValueError(f"以下店铺号在云表格中找不到：{', '.join(missing[:20])}")
+    if not id_to_row:
+        raise ValueError("云表格没有可更新的店铺行")
 
     amounts = {item["店铺号"]: item["销售总金额"] for item in rows}
     letter = column_letter(target_column)
@@ -239,6 +238,8 @@ def sync_file(
     id_values = client.read_range(spreadsheet_token, f"{actual_sheet_id}!A3:A{max_rows}")
     headers = header_values
     cloud_ids = [row[0] if row else "" for row in id_values]
+    cloud_shop_ids = {str(value or "").strip() for value in cloud_ids}
+    skipped = sorted({item["店铺号"] for item in rows} - cloud_shop_ids)
     updates = plan_updates(actual_sheet_id, headers, cloud_ids, rows, business_date)
     target_column = re.search(r"!([A-Z]+)", updates[0]["range"])[1]
     total_update = plan_total(actual_sheet_id, target_column, cloud_ids)
@@ -276,6 +277,7 @@ def sync_file(
         "dateHeaderCell": f"{target_column}2",
         "verified": not dry_run,
         "rowCount": len(rows),
+        "skippedShopIds": skipped,
         "overwrittenShopRows": len(updates),
         "clearedShopRows": sum(1 for update in updates if update["values"][0][0] == ""),
         "updateCount": len(updates) + 1,

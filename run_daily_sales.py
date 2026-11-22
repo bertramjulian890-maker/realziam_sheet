@@ -120,6 +120,12 @@ def notify_failure(webhook_url: str, error: Exception, log_path: Path) -> bool:
         f"错误：{str(error)[:1200]}\n"
         f"日志：{log_path}"
     )
+    return send_webhook(webhook_url, message)
+
+
+def send_webhook(webhook_url: str, message: str) -> bool:
+    if not webhook_url.strip():
+        return False
     request = Request(
         webhook_url.strip(),
         data=json.dumps({"msg_type": "text", "content": {"text": message}}, ensure_ascii=False).encode("utf-8"),
@@ -131,7 +137,7 @@ def notify_failure(webhook_url: str, error: Exception, log_path: Path) -> bool:
             response.read()
         return True
     except Exception:
-        LOGGER.exception("飞书失败通知发送失败")
+        LOGGER.exception("飞书通知发送失败")
         return False
 
 
@@ -244,6 +250,12 @@ def main() -> int:
                         business_date, result["sheetId"], result["targetColumn"],
                         result["rowCount"], result["clearedShopRows"], result["totalCell"],
                         result["totalAmount"], result["verified"])
+        skipped = sorted({shop for day in results for shop in day.get("skippedShopIds", [])})
+        if skipped:
+            message = "【万象汇销售同步提醒】云表缺少以下店铺号，已跳过：" + "、".join(skipped)
+            LOGGER.warning(message)
+            if not args.dry_run:
+                send_webhook(str(config.get("failureWebhookUrl") or ""), message)
         output = results[0] if len(results) == 1 else {
             "sourceFile": str(source_file.resolve()),
             "startDate": business_dates[0].isoformat(),
